@@ -18,6 +18,11 @@ C++ Linux Server
   - 支持reactor/proactor的read, write，对于proactor模式：通过同步I/O模拟
   - 线程池
 - [ ] 处理http请求，并作出正确响应 
+<<<<<<< HEAD
+=======
+  - 
+  -  
+>>>>>>> f83dc495e49f8c5458f67740f234fb9b8a944410
   - http长连接，tcp长连接
   - 对http服务器，通过webbench压测
 - [ ] 输出服务器日志LOG
