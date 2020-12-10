@@ -21,7 +21,7 @@ message(STATUS "[__INFO__] PROJECT_BINARY_DIR: ${PROJECT_BINARY_DIR}")
 # config
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/config.h.in"
-    "${EXECUTABLE_OUTPUT_PATH}/config.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config.h"
 )
 # pthread
 set(THREADS_PREFER_PTHREAD_FLAG ON)

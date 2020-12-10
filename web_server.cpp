@@ -354,7 +354,6 @@ bool HttpServer::read_once(tcp_conn* user){
 }
 
 bool HttpServer::write_(tcp_conn* user){
-    std::cout << user->sockfd << " " << user->bytes_to_send << std::endl;
     int temp = 0;
     if (user->bytes_to_send == 0){
         epoller_->mod_fd(user->sockfd, EPOLLIN | user->conn_event);

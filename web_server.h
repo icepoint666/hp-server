@@ -12,20 +12,8 @@
 #include "timer/timer_list.h"
 #include "timer/timer_collection.h"
 #include "threadpool.h"
-#include "error_no.h"
-#include "applica/tcp_conn.h"
-
-//之后要单纯分离出一个config.h
-#define MAX_FD 65536                    //最大文件描述符
-#define MAX_EVENT_NUMBER 10000          //一次epoll_wait最大同时返回的事件数
-#define DEFAULT_HTTP_PORT 80            //默认端口
-#define TIMESLOT 5                      //最小超时单位
-#define INIT_TRIG_MODE 0                //LT / ET触发模式
-#define ACTOR_MODE 0                    //reactor: 0, preactor: 1
-#define WORKQUEUE_MAX_REQUESTS 10000    //请求队列中允许的最大请求数
-#define THREAD_NUMBER 8                 //工作线程数
-#define READ_BUFFER_SIZE 2048
-#define WRITE_BUFFER_SIZE 1024         
+#include "config.h"
+#include "applica/tcp_conn.h"     
 
 class HttpServer {
 public:
