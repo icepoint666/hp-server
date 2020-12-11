@@ -44,6 +44,20 @@ HttpServer::~HttpServer(){
     delete pool_;
 }
 
+bool HttpServer::init_log(){
+    if(LOG){
+        close_log_flag = 0;
+        if(LOG_ASYNC){
+             return Log::get_instance()->init("./serverlog", close_log_flag, 2000, 500000, 800);
+        }else{
+             return Log::get_instance()->init("./serverlog", close_log_flag, 2000, 500000, 0);
+        }
+    }else{
+        close_log_flag = 1;
+    }
+    return true;
+}
+
 int HttpServer::init_socket(){
     int ret;
     struct sockaddr_in addr;
@@ -60,7 +74,8 @@ int HttpServer::init_socket(){
     /* Linger: 优雅关闭: 直到所剩数据发送完毕或超时 */
     struct linger opt_linger = {1, 1};
     if(setsockopt(listenfd, SOL_SOCKET, SO_LINGER, &opt_linger, sizeof(opt_linger)) < 0){
-        close(listenfd); //LOG_ERROR("Init linger error!");
+        close(listenfd); 
+        LOG_ERROR("%s", "Init linger error");
         return INIT_LINGER_ERROR;
     }
 
@@ -72,12 +87,14 @@ int HttpServer::init_socket(){
     }
 
     if(bind(listenfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        close(listenfd); //LOG_ERROR("Bind Port:%d error!", port_);
+        close(listenfd); 
+        LOG_ERROR("Bind Port:%d error", port);
         return SOCKET_BIND_ERROR;
     }
 
     if(listen(listenfd, 6) < 0) { //set backlog uplimit 6
-        close(listenfd); //LOG_ERROR("Listen port:%d error!", port_);
+        close(listenfd); 
+        LOG_ERROR("Listen port:%d error", port);
         return SOCKET_LISTEN_ERROR;
     }
 
@@ -86,6 +103,7 @@ int HttpServer::init_socket(){
         close(listenfd);
         return FCNTL_FAILED;
     }
+    LOG_INFO("Listening port: %d", port)
     return 0;
 }
 
@@ -114,7 +132,7 @@ void HttpServer::init_event_mode(int trig_mode) {
         conn_event_ |= EPOLLET;
         break;
     }
-    //LOG_INFO("Trigger mode:", ...);
+    LOG_INFO("Trigger mode: %d", trig_mode);
 }
 
 int HttpServer::init_epoller(){
@@ -163,10 +181,12 @@ void HttpServer::init_signal_handler(){
 int HttpServer::event_loop(){
     bool timeout = false;
     bool stop_server = false;
+    LOG_INFO("%s", "Server start");
     int ret;
     while (!stop_server){
         int number = epoll_wait(epoller_->epoll_fd, &epoller_->events_[0], static_cast<int>(epoller_->events_.size()), timewait);
         if (number < 0 && errno != EINTR){
+            LOG_ERROR("%s", "Epoll failure");
             return EPOLL_WAIT_FAILED;
         }
 
@@ -183,7 +203,7 @@ int HttpServer::event_loop(){
             else if ((sockfd == pipe_fd[0]) && (epoller_->events_[i].events & EPOLLIN)) {//处理信号
                 if(handle_signal(timeout, stop_server) > 0)
                     continue;
-                    //LOG_ERROR("%s", "Handle Signal Failure!");
+                    LOG_ERROR("%s", "Handle signal failure");
             }
             else if (epoller_->events_[i].events & EPOLLIN) { //处理从客户连接上接收到的数据
                 if(handle_read(sockfd) > 0)
@@ -197,7 +217,7 @@ int HttpServer::event_loop(){
         if(timeout){
             timer_.timer_handler();
             timeout = false;
-            //LOG_INFO("%s", "timer tick");
+            LOG_INFO("%s", "Timer tick..");
         }
     }
 }
@@ -218,13 +238,13 @@ void HttpServer::adjust_timer(Timer *timer){
     time_t cur = time(NULL);
     timer->expire = cur + 3 * TIMESLOT;
     timer_.timer_lst.adjust_timer(timer);
-    //LOG_INFO("%s", "adjust timer once");
+    //LOG_INFO("%s", "Adjust timer once");
 }
 
 void HttpServer::delete_timer(Timer *timer, int sockfd){
     timer->close_fd(&conn_datas[sockfd]);
     if (timer)timer_.timer_lst.del_timer(timer);
-    //LOG_INFO("close fd %d", users_timer[sockfd].sockfd);
+    LOG_INFO("Close fd %d", conn_datas[sockfd].sockfd);
 }
 
 int HttpServer::handle_accept(){
@@ -232,8 +252,10 @@ int HttpServer::handle_accept(){
     socklen_t len = sizeof(addr);
     int fd;
     do { //第一次执行想当于是LT模式
-        if((fd = accept(listenfd, (struct sockaddr *)&addr, &len)) < 0)
+        if((fd = accept(listenfd, (struct sockaddr *)&addr, &len)) < 0){
+            LOG_ERROR("%s:errno is: %d", "Accept error", errno);
             return SOCKET_ACCEPT_ERROR;
+        }
     } while(listen_event_ & EPOLLET); //之后循环相当于都是ET模式的处理方式
     epoller_->add_fd(fd, EPOLLIN | conn_event_);
     set_nonblocking(fd);
@@ -246,6 +268,7 @@ int HttpServer::handle_signal(bool &timeout, bool &stop_server){
     int ret, sig;
     char signals[1024];
     if((ret = recv(pipe_fd[0], signals, sizeof(signals), 0)) <= 0)
+        LOG_ERROR("Read signal error: errno is: %d", errno);
         return READ_SIGNAL_ERROR;
     for (int i = 0; i < ret; ++i){
         switch (signals[i]){
@@ -274,7 +297,7 @@ int HttpServer::handle_read(int fd){
     }
     else { //proactor
         if (read_once(users + fd)){ //read_once如果成功，保证这次读必然是成功的
-            //LOG_INFO("deal with the client(%s)", inet_ntoa(u[sockfd].get_address()->sin_addr));
+            LOG_INFO("Deal with the client(%s)", inet_ntoa((users+fd)->address.sin_addr));
             pool_->append(users + fd, -1); //异步交给工作线程来处理
             if(timer)adjust_timer(timer);
         }else{
@@ -302,7 +325,7 @@ int HttpServer::handle_write(int fd){
     }
     else { //proactor
         if (write_(users+fd)){
-            //LOG_INFO("send data to the client(%s)", inet_ntoa(users[sockfd].get_address()->sin_addr));
+            LOG_INFO("Send data to the client(%s)", inet_ntoa((users+fd)->address.sin_addr));
             if(timer)adjust_timer(timer);
         }else{
             delete_timer(timer, fd);
@@ -405,6 +428,8 @@ int set_nonblocking(int fd) { //设置套接字为非阻塞模式，否则recv, 
 
 int http_server_run(HttpServer& server){
     int ret = 0;
+    if(!server.init_log())
+        return LOG_INIT_ERROR;
     if(ret = server.init_socket())
         return ret;
     server.init_thread_pool(INIT_TRIG_MODE, THREAD_NUMBER, WORKQUEUE_MAX_REQUESTS);

@@ -1,5 +1,5 @@
 #include <unistd.h> /* daemon */
-
+#include <iostream>
 #include "web_server.h"
 #include "config.h"
 
@@ -11,9 +11,9 @@ int main(){
     HttpServer server;
     server.port = 8080;
     server.timewait = -1;
-    //server.log = 1;
-    http_server_run(server);
     
-    return 0;
+    int ret = http_server_run(server);
+    std::cout << "Exit Status: " << ret << std::endl;
+    return ret;
 }
 

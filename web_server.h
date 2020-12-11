@@ -11,6 +11,7 @@
 #include "epoll/epoller.h"
 #include "timer/timer_list.h"
 #include "timer/timer_collection.h"
+#include "log/log.h"
 #include "threadpool.h"
 #include "config.h"
 #include "applica/tcp_conn.h"     
@@ -25,6 +26,7 @@ public:
     int ssl;
     int http_version;
     int actor_mode;
+    int close_log_flag;
 
     //多线程相关
     int worker_processes;
@@ -46,7 +48,8 @@ public:
 
     HttpServer();
     ~HttpServer();
-
+    
+    bool init_log();
     int init_socket();
     void init_thread_pool(int actor_mode, int thread_number, int max_request);
     void init_event_mode(int trig_mode);
