@@ -7,6 +7,7 @@
 #include <errno.h> /*errno 是记录系统的最后一次错误代码。 代码是一个int型的值，在errno.h中定义，debug的时候这个很关键*/
 #include <memory>  /*unique_ptr*/
 #include <algorithm>
+#include <atomic>
 
 #include "epoll/epoller.h"
 #include "timer/timer_list.h"
@@ -14,7 +15,9 @@
 #include "log/log.h"
 #include "threadpool.h"
 #include "config.h"
-#include "applica/tcp_conn.h"     
+
+#include "applica/http_conn.h"
+#include "applica/tcp_conn.h"
 
 class HttpServer {
 public:
@@ -27,6 +30,8 @@ public:
     int http_version;
     int actor_mode;
     int close_log_flag;
+    
+    char *root_;
 
     //多线程相关
     int worker_processes;
@@ -42,8 +47,20 @@ public:
     TimerCollection timer_;
 
     //tcp,http
+    #if HTTP_MODE
+    http_conn *users;
+    threadpool<http_conn> *pool_;
+    #else
     tcp_conn *users;
     threadpool<tcp_conn> *pool_;
+    #endif
+    
+    //mysql
+    std::string user;
+    std::string passwd;
+    std::string db_name;
+    connectionpool *conn_pool_;
+
     int n_thread;
 
     HttpServer();
@@ -70,11 +87,15 @@ public:
 
     void init_user(tcp_conn* user, int sockfd, const sockaddr_in &addr, uint32_t conn_event_);
     void init_user(tcp_conn* user);
-    void process_write(tcp_conn* user);
     void process(tcp_conn* user);
     bool read_once(tcp_conn* user);
     bool write_(tcp_conn* user);
 
+    void init_user(http_conn* user, int sockfd, const sockaddr_in &addr, uint32_t conn_event_, std::string user, std::string passwd, std::string sqlname);
+    void init_user(http_conn* user);
+    void process(http_conn* user);
+    void read_once(http_conn* user);
+    void write_(http_conn* user);
 };
 
 int set_nonblocking(int fd);

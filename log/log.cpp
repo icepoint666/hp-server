@@ -18,8 +18,7 @@ Log::~Log(){
 
 //异步需要设置阻塞队列的长度，同步不需要设置
 bool Log::init(const char* file_name, int close_log, int log_buf_size_, int max_lines_, int max_queue_size){
-    //如果设置了max_queue_size,则设置为异步
-    if(max_queue_size >= 1){
+    if(max_queue_size >= 1){//如果设置了max_queue_size,则设置为异步
         async_flag = true;
         log_queue = new block_queue<std::string>(max_queue_size);
         pthread_t tid;
@@ -65,7 +64,7 @@ void Log::write_log(int level, const char *format, ...)
     case 0:strcpy(s, "[debug]:");break;
     case 1:strcpy(s, "[info]:");break;
     case 2:strcpy(s, "[warn]:");break;
-    case 3:strcpy(s, "[erro]:");break;
+    case 3:strcpy(s, "[error]:");break;
     default:strcpy(s, "[info]:");break;
     }
     mtx.lock();

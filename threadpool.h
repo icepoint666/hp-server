@@ -6,6 +6,7 @@
 #include <exception>
 #include <pthread.h>
 
+#include "log/log.h"
 #include "lock.h"
 
 class HttpServer; //forward declaration
@@ -93,6 +94,7 @@ void threadpool<T>::run()
         if (!actor_mode){
             if (!request->state){//read
                 if (server.read_once(request)){
+                    LOG_INFO("Deal with the client(%s)", inet_ntoa(request->address.sin_addr));
                     request->improv = 1;
                     server.process(request);
                 }
@@ -102,8 +104,10 @@ void threadpool<T>::run()
                 }
             }
             else{//write
-                if (server.write_(request))
+                if (server.write_(request)){
+                    LOG_INFO("Send data to the client(%s)", inet_ntoa(request->address.sin_addr));
                     request->improv = 1;
+                }
                 else{
                     request->improv = 1;
                     request->timer_flag = 1;

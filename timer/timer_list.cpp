@@ -130,4 +130,5 @@ void close_fd(timer_data *conn_data){
     epoll_ctl(epollfd, EPOLL_CTL_DEL, conn_data->sockfd, 0);
     assert(conn_data);
     close(conn_data->sockfd);
+    user_count--;
 }

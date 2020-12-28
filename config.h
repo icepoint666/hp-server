@@ -13,7 +13,7 @@
 #define WRITE_BUFFER_SIZE 1024
 #define DAEMON 0                        //是否作为后台进程
 #define LOG 1                           //是否输出log
-#define LOG_ASYNC 0                     //日志写入方式，默认同步，sync: 0, async: 1
+#define LOG_ASYNC 1                     //日志写入方式，默认同步，sync: 0, async: 1
 #define LOG_BLOCK_QUEUE_SIZE 800        //日志写入async时，block queue的大小
 
 enum{
@@ -26,6 +26,7 @@ enum{
     SOCKET_BIND_ERROR = 1102,
     SOCKET_LISTEN_ERROR = 1103,
     SOCKET_ACCEPT_ERROR = 1104,
+    INTERNAL_SERVER_BUSY = 1105,
     READ_SIGNAL_ERROR = 1200,
     FCNTL_FAILED = 1201,
     EPOLL_CREATE_FAILED = 1301,

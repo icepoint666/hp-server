@@ -4,9 +4,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-
-#define READ_BUFFER_SIZE 2048
-#define WRITE_BUFFER_SIZE 1024  //之后要单纯分离出一个config.h
+#include "../config.h"
 
 class tcp_conn{
 public:

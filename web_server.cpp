@@ -4,7 +4,6 @@
 #include <iostream>
 
 #include "web_server.h"
-#include "tcp_conn.h"
 
 
 #if __cplusplus >= 201402L
@@ -19,6 +18,7 @@
 
 static int pipefd; //暂时设置成了全局变量，如果可以把member function作为函数参数传入，那么就可以不使用这个全局变量
 static int epollfd; //暂时设置成了全局变量，便于timer调用
+static std::atomic<int> user_count(0);
 
 HttpServer::HttpServer(){ //构造函数中不检查 + 抛出异常，放在后面检查
     strcpy(host, "0.0.0.0");
@@ -29,7 +29,20 @@ HttpServer::HttpServer(){ //构造函数中不检查 + 抛出异常，放在后�
     listenfd = -1;
     actor_mode = ACTOR_MODE; 
     epoller_ = make_unique<Epoller>(MAX_EVENT_NUMBER);
+
+    //root文件夹路径
+    char server_path[200];
+    getcwd(server_path, 200);
+    char root[6] = "/root";
+    root_ = (char *)malloc(strlen(server_path) + strlen(root) + 1);
+    strcpy(root_, server_path);
+    strcat(root_, root);
+
+    #if HTTP_MODE
+    users = new http_conn[MAX_FD];
+    #else
     users = new tcp_conn[MAX_FD];
+    #endif
     conn_datas = new timer_data[MAX_FD];
     
 }
@@ -108,7 +121,11 @@ int HttpServer::init_socket(){
 }
 
 void HttpServer::init_thread_pool(int actor_mode, int thread_number, int max_request){
+    #if HTTP_MODE
+    pool_ = new threadpool<http_conn>(*this, actor_mode, thread_number, max_request);
+    #else
     pool_ = new threadpool<tcp_conn>(*this, actor_mode, thread_number, max_request);
+    #endif
 }
 
 void HttpServer::init_event_mode(int trig_mode) {
@@ -256,10 +273,18 @@ int HttpServer::handle_accept(){
             LOG_ERROR("%s:errno is: %d", "Accept error", errno);
             return SOCKET_ACCEPT_ERROR;
         }
+        if (user_count.load() >= MAX_FD){
+            LOG_ERROR("%s", "Internal server busy");
+            return INTERNAL_SERVER_BUSY;
+        }
     } while(listen_event_ & EPOLLET); //之后循环相当于都是ET模式的处理方式
     epoller_->add_fd(fd, EPOLLIN | conn_event_);
     set_nonblocking(fd);
+    #if HTTP_MODE
+    init_user(users+fd, fd, addr, conn_event_, root_, user, passwd, db_name);
+    #else
     init_user(users+fd, fd, addr, conn_event_);
+    #endif
     init_timer(fd, addr);
     return 0;
 }
@@ -338,6 +363,9 @@ void HttpServer::init_user(tcp_conn* user, int fd, const sockaddr_in &addr, uint
     user->sockfd = fd;
     user->address = addr;
     user->conn_event = conn_event_;
+
+    user_count++;
+
     init_user(user);
 }
 
@@ -352,6 +380,7 @@ void HttpServer::init_user(tcp_conn* user){
     memset(user->read_buf, '\0', READ_BUFFER_SIZE);
     memset(user->write_buf, '\0', WRITE_BUFFER_SIZE);
 }
+
 
 //循环读取客户数据，直到无数据可读或对方关闭连接
 //非阻塞ET工作模式下，需要一次性将数据读完
@@ -400,24 +429,145 @@ bool HttpServer::write_(tcp_conn* user){
     }
 }
 
-void HttpServer::process_write(tcp_conn* user){
-    memcpy(user->write_buf, user->read_buf, (unsigned)std::min(user->read_idx, WRITE_BUFFER_SIZE));
-    user->bytes_to_send = std::min(user->read_idx, WRITE_BUFFER_SIZE);
-}
-
-void HttpServer::process(tcp_conn* user)
-{
+void HttpServer::process(tcp_conn* user){
     //process_read();//默认一次读完
     // if (read_ret == NO_REQUEST){
     //     mod_fd(sockfd, EPOLLIN | conn_event);
     //     return;
     // }
-    process_write(user); //如果写入失败关闭连接
+    //process_write(user); //如果写入失败关闭连接
+    memcpy(user->write_buf, user->read_buf, (unsigned)std::min(user->read_idx, WRITE_BUFFER_SIZE));
+    user->bytes_to_send = std::min(user->read_idx, WRITE_BUFFER_SIZE);
     // if (!write_ret)
     //     close_conn();
     epoller_->mod_fd(user->sockfd, EPOLLOUT | user->conn_event);
 }
 
+void HttpServer::init_user(http_conn* user, int fd, const sockaddr_in &addr, uint32_t conn_event_, char* root,
+                        std::string user, std::string passwd, std::string sqlname){
+    user->sockfd = fd;
+    user->address = addr;
+    user->conn_event = conn_event_;
+    user->doc_root = root;
+    user_count++;
+
+    strcpy(sql_user, user.c_str());
+    strcpy(sql_passwd, passwd.c_str());
+    strcpy(sql_name, sqlname.c_str());
+    init_user(user);
+}
+
+void HttpServer::init_user(http_conn* user){
+    user->check_state = http_conn::CHECK_STATE_REQUESTLINE;
+    user->linger = false;
+    user->method = http_conn::GET;
+    user->url = 0;
+    user->version = 0;
+    user->content_length = 0;
+    user->cgi = 0;
+    user->bytes_to_send = 0;
+    user->bytes_have_send = 0;
+    user->read_idx = 0;
+    user->write_idx = 0;
+    user->checked_idx = 0;
+    user->start_line = 0;
+    user->state = 0;
+    user->timer_flag = 0;
+    user->improv = 0;
+    
+    memset(user->read_buf, '\0', READ_BUFFER_SIZE);
+    memset(user->write_buf, '\0', WRITE_BUFFER_SIZE);
+    memset(user->filename_, '\0', FILENAME_LEN)
+}
+
+void HttpServer::read_once(http_conn* user){
+    if (user->read_idx >= READ_BUFFER_SIZE)
+        return false;
+    int bytes_read = 0;
+    //LT / ET处理数据
+    do {
+        bytes_read = recv(user->sockfd, user->read_buf + user->read_idx, READ_BUFFER_SIZE - user->read_idx, 0);//0：stream没有要读的数据，-1：I/O不可用（或者其他错误）
+        if(user->conn_event & EPOLLET){ //ET
+            if(bytes_read == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) //对于ET来说，读到EAGAIN是正确返回
+                break;
+        }else{ //LT +=
+            user->read_idx += bytes_read;
+        }
+        if(bytes_read <= 0)//LT / ET：前面已经判断过ET的EAGAIN情况，所以到这里的都是出现read错误的情况
+            return false;
+        if(user->conn_event & EPOLLET)//ET +=
+            user->read_idx += bytes_read;
+    }while(user->conn_event & EPOLLET);
+    return true;
+}
+
+void HttpServer::write_(http_conn* user){
+    int temp = 0;
+    if (user->bytes_to_send == 0){
+        epoller_->mod_fd(user->sockfd, EPOLLIN | user->conn_event);
+        init_user(user);
+        return true;
+    }
+    while (1){
+        temp = writev(user->sockfd, user->m_iv, user->m_iv_count);
+        if (temp < 0){
+            if (errno == EAGAIN){
+                epoller_->mod_fd(user->sockfd, EPOLLOUT | user->conn_event);
+                return true;
+            }
+            //unmap
+            if (user->file_address){
+                munmap(user->file_address, user->file_stat.st_size);
+                user->file_address = 0;
+            }
+            return false;
+        }
+
+        user->bytes_have_send += temp;
+        user->bytes_to_send -= temp;
+        if (user->bytes_have_send >= user->m_iv[0].iov_len){
+            user->m_iv[0].iov_len = 0;
+            user->m_iv[1].iov_base = user->file_address + (user->bytes_have_send - user->write_idx);
+            user->m_iv[1].iov_len = user->bytes_to_send;
+        }else{
+            user->m_iv[0].iov_base = user->write_buf + user->bytes_have_send;
+            user->m_iv[0].iov_len = user->m_iv[0].iov_len - user->bytes_have_send;
+        }
+
+        if (user->bytes_to_send <= 0){
+            if (user->file_address){
+                munmap(user->file_address, user->file_stat.st_size);
+                user->file_address = 0;
+            }
+            epoller_->mod_fd(user->sockfd, EPOLLIN | user->conn_event);
+
+            if (user->linger){
+                init_user(user);
+                return true;
+            }else{
+                return false;
+            }
+        }
+    }
+}
+
+void HttpServer::process(http_conn* user){
+    http_conn::HTTP_CODE read_ret = user->process_read();
+    if (read_ret == http_conn::NO_REQUEST){
+        epoller_->mod_fd(user->sockfd, EPOLLIN | user->conn_event);
+        return;
+    }
+    bool write_ret = process_write(read_ret);
+    if (!write_ret){
+        if(user->sockfd != -1){
+            epoll_ctl(epollfd, EPOLL_CTL_DEL, user->sockfd, 0);
+            close(user->sockfd);
+            user->sockfd = -1;
+            user_count--;
+        }
+    }
+    epoller_->mod_fd(user->sockfd, EPOLLOUT | user->conn_event);
+}
 
 int set_nonblocking(int fd) { //设置套接字为非阻塞模式，否则recv, send必须要求读完所有字节才返回
     int flags = fcntl(fd, F_GETFL, 0);

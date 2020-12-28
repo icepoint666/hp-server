@@ -6,10 +6,10 @@
 #include "block_queue.h"
 #include "../lock.h"
 
-#define LOG_DEBUG(format, ...) if(0 == close_log_flag) {Log::get_instance()->write_log(0, format, ##__VA_ARGS__); Log::get_instance()->flush();}
-#define LOG_INFO(format, ...) if(0 == close_log_flag) {Log::get_instance()->write_log(1, format, ##__VA_ARGS__); Log::get_instance()->flush();}
-#define LOG_WARN(format, ...) if(0 == close_log_flag) {Log::get_instance()->write_log(2, format, ##__VA_ARGS__); Log::get_instance()->flush();}
-#define LOG_ERROR(format, ...) if(0 == close_log_flag) {Log::get_instance()->write_log(3, format, ##__VA_ARGS__); Log::get_instance()->flush();}
+#define LOG_DEBUG(format, ...) if(1 == LOG) {Log::get_instance()->write_log(0, format, ##__VA_ARGS__); Log::get_instance()->flush();}
+#define LOG_INFO(format, ...) if(1 == LOG) {Log::get_instance()->write_log(1, format, ##__VA_ARGS__); Log::get_instance()->flush();}
+#define LOG_WARN(format, ...) if(1 == LOG) {Log::get_instance()->write_log(2, format, ##__VA_ARGS__); Log::get_instance()->flush();}
+#define LOG_ERROR(format, ...) if(1 == LOG) {Log::get_instance()->write_log(3, format, ##__VA_ARGS__); Log::get_instance()->flush();}
 
 class Log{
 public:
@@ -34,6 +34,7 @@ private:
         while(log_queue->pop(single_log)){
             mtx.lock();
             fputs(single_log.c_str(), fp);
+            fputs(single_log.c_str(), stdout);
             mtx.unlock();
         }
     }

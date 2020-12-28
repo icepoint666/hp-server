@@ -6,15 +6,17 @@
 #define DEFAULT_HTTP_PORT 80            //默认端口
 #define TIMESLOT 5                      //最小超时单位
 #define INIT_TRIG_MODE 0                //LT / ET触发模式
-#define ACTOR_MODE 0                    //reactor: 0, preactor: 1
+#define ACTOR_MODE 1                    //reactor: 0, preactor: 1
 #define WORKQUEUE_MAX_REQUESTS 10000    //请求队列中允许的最大请求数
 #define THREAD_NUMBER 8                 //工作线程数
 #define READ_BUFFER_SIZE 2048
 #define WRITE_BUFFER_SIZE 1024
+#define FILENAME_LEN 200
 #define DAEMON 0                        //是否作为后台进程
 #define LOG 1                           //是否输出log
-#define LOG_ASYNC 0                     //日志写入方式，默认同步，sync: 0, async: 1
+#define LOG_ASYNC 1                     //日志写入方式，默认同步，sync: 0, async: 1
 #define LOG_BLOCK_QUEUE_SIZE 800        //日志写入async时，block queue的大小
+#define HTTP_MODE 1                     //服务器类型：tcp_conn: 0, http_conn = 1
 
 enum{
     SUCCESS = 0,

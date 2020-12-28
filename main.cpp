@@ -11,6 +11,9 @@ int main(){
     HttpServer server;
     server.port = 8080;
     server.timewait = -1;
+    server.user = "root";
+    server.passwd = "root";
+    server.dbname = "default_db";
     
     int ret = http_server_run(server);
     std::cout << "Exit Status: " << ret << std::endl;
